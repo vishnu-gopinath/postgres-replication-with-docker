@@ -1,0 +1,90 @@
+# docker-compose.yml
+version: '3.9'
+services:
+  primary:
+    #build: .
+    image: postgres # use latest official postgres version
+    environment:
+     - POSTGRES_HOST_AUTH_METHOD=trust
+     - POSTGRES_USER=postgres
+     - POSTGRES_PASSWORD=postgres
+     - POSTGRES_DB=replication
+    volumes:
+      - primary:/var/lib/postgresql/data/ # persist data even if container shuts down
+      - secondary1:/backup/secondary1 # persist data even if container shuts down
+      - secondary2:/backup/secondary2
+      - .\config:/postgres
+      - .\scripts:/docker-entrypoint-initdb.d
+      - .\logs\primary:/postgres/logs
+    ports:
+      - 5432:5432
+    command: postgres -c config_file=/postgres/postgresql.conf
+    container_name: 'primary'
+    hostname: primary
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      postgres-network:
+        ipv4_address: 172.20.0.2
+
+  secondary1:
+      #build: .
+      image: postgres # use latest official postgres version
+      environment:
+      - POSTGRES_HOST_AUTH_METHOD=trust
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      volumes:
+        - secondary1:/var/lib/postgresql/data/ # persist data even if container shuts down
+        - .\config:/postgres
+        - .\logs\secondary1:/postgres/logs
+      ports:
+        - 5433:5432
+      command: postgres -c config_file=/postgres/postgresql.conf
+      container_name: 'secondary1'
+      hostname: secondary1
+      networks:
+        postgres-network:
+          ipv4_address: 172.20.0.3
+      depends_on:
+        primary:
+          condition: service_healthy
+
+  secondary2:
+      #build: .
+      image: postgres # use latest official postgres version
+      environment:
+      - POSTGRES_HOST_AUTH_METHOD=trust
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      volumes:
+        - secondary2:/var/lib/postgresql/data/ # persist data even if container shuts down
+        - .\config:/postgres/
+        - .\logs\secondary2:/postgres/logs
+      ports:
+        - 5434:5432
+      command: postgres -c config_file=/postgres/postgresql.conf
+      container_name: 'secondary2'
+      hostname: secondary2
+      networks:
+        postgres-network:
+          ipv4_address: 172.20.0.4
+      depends_on:
+        primary:
+          condition: service_healthy
+
+
+volumes:  
+  primary:
+  secondary1:
+  secondary2:
+  shared:
+
+networks:
+  postgres-network:
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
